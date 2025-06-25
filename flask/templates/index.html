@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PDF Upload, Embed & Search</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 30px 50px;
+            background-color: #f5f7fa;
+        }
+
+        h2 {
+            color: #2c3e50;
+        }
+
+        form {
+            margin-bottom: 30px;
+        }
+
+        input[type="text"], input[type="file"] {
+            padding: 10px;
+            width: 300px;
+            margin: 5px 0 10px 0;
+        }
+
+        button {
+            padding: 10px 20px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+
+        button:hover {
+            background-color: #2980b9;
+        }
+
+        .text-preview, .search-results {
+            border: 1px solid #ccc;
+            background-color: #ffffff;
+            padding: 15px;
+            margin-top: 10px;
+            overflow-y: auto;
+            max-height: 300px;
+        }
+
+        .message {
+            font-weight: bold;
+            margin: 10px 0;
+        }
+
+        .message.success {
+            color: green;
+        }
+
+        .message.error {
+            color: red;
+        }
+
+        ul {
+            list-style-type: none;
+            padding: 0;
+        }
+
+        li {
+            margin-bottom: 15px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+        }
+
+        hr {
+            margin: 40px 0;
+        }
+    </style>
+</head>
+<body>
+    <h2>📄 PDF Upload & Vector Search</h2>
+
+    <form method="POST" enctype="multipart/form-data">
+        <label><strong>Document ID:</strong></label><br>
+        <input type="text" name="doc_id" placeholder="e.g., invoice1" required><br>
+        <label><strong>Upload PDF File:</strong></label><br>
+        <input type="file" name="pdf_file" accept="application/pdf" required><br>
+        <button type="submit">📤 Upload & Embed</button>
+    </form>
+
+    {% if message %}
+        <div class="message {% if '✅' in message %}success{% else %}error{% endif %}">{{ message }}</div>
+    {% endif %}
+
+    {% if upload_result.text %}
+        <h3>📄 Uploaded Text Preview (ID: {{ upload_result.id }})</h3>
+        <div class="text-preview">{{ upload_result.text }}</div>
+    {% endif %}
+
+    <hr>
+
+    <h2>🔍 Search Documents</h2>
+    <form method="POST">
+        <input type="text" name="search" placeholder="Enter search term" required>
+        <button type="submit">🔎 Search</button>
+    </form>
+
+    {% if search_result %}
+        <h3>🔍 Search Results ({{ total_hits }} Matches)</h3>
+        <div class="search-results">
+            <ul>
+                {% for item in search_result %}
+                    <li>
+                        <strong>Index:</strong> {{ item.index }}<br>
+                        <strong>Score:</strong> {{ "%.4f"|format(item.score) }}<br>
+                        {{ item.text[:300] }}...
+                    </li>
+                {% endfor %}
+            </ul>
+        </div>
+    {% endif %}
+</body>
+</html>
