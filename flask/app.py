@@ -1,4 +1,4 @@
-from flask import Flask, request, render_template,redirect,url_for
+from flask import Flask, request, render_template, redirect, url_for
 import os
 import fitz  # PyMuPDF
 import numpy as np
@@ -25,7 +25,8 @@ def create_index(index_name):
                     "clean_text": {"type": "text"},
                     "digit_text": {"type": "text"},
                     "symbol_text": {"type": "text"},
-                    "embedding": {"type": "dense_vector" }
+                    "embedding": {"type": "dense_vector"},
+                    "file_name": {"type": "keyword"}
                 }
             }
         }
@@ -38,7 +39,6 @@ def extract_text_from_pdf(pdf_path):
 
 
 def preprocess_text(text):
-    # Lowercase and remove symbols except digits and letters
     return re.sub(r'[^\w\s]', '', text.lower())
 
 
@@ -47,7 +47,6 @@ def extract_digits(text):
 
 
 def extract_symbols(text):
-    # extract symbols including common special chars
     return " ".join(re.findall(r"[^\w\s]", text))
 
 
@@ -55,7 +54,7 @@ def convert_to_float64(embedding):
     return np.array(embedding, dtype=np.float64).tolist()
 
 
-def save_to_elasticsearch(index_name, doc_id, text):
+def save_to_elasticsearch(index_name, doc_id, text, file_name):
     create_index(index_name)
     clean_text = preprocess_text(text)
     digit_text = extract_digits(text)
@@ -66,7 +65,8 @@ def save_to_elasticsearch(index_name, doc_id, text):
         "clean_text": clean_text,
         "digit_text": digit_text,
         "symbol_text": symbol_text,
-        "embedding": embedding
+        "embedding": embedding,
+        "file_name": file_name
     }
     es.index(index=index_name, id=doc_id, body=doc)
 
@@ -82,7 +82,6 @@ def knn_search_all_indices(query_text, k=10, score_threshold=1.2, fallback_score
         if idx.startswith("."):
             continue
         try:
-            # First try vector + partial match search
             response = es.search(
                 index=idx,
                 body={
@@ -110,7 +109,6 @@ def knn_search_all_indices(query_text, k=10, score_threshold=1.2, fallback_score
             filtered_hits = [hit for hit in hits if hit["_score"] >= score_threshold]
             total_hits += len(filtered_hits)
 
-            # Fallback to exact phrase match on full text if no good vector results
             if len(filtered_hits) == 0:
                 fallback_response = es.search(
                     index=idx,
@@ -132,53 +130,51 @@ def knn_search_all_indices(query_text, k=10, score_threshold=1.2, fallback_score
                 filtered_hits.extend(fallback_filtered)
 
             for hit in filtered_hits:
+                full_text = hit["_source"]["text"]
+                match_position = full_text.lower().find(clean_query.lower())
+                start = max(0, match_position - 100)
+                end = min(len(full_text), match_position + 200)
+                context = full_text[start:end].strip().replace('\n', ' ')
                 results.append({
                     "index": idx,
                     "score": hit["_score"],
-                    "text": hit["_source"]["text"]
+                    "text": context,
+                    "file_name": hit["_source"].get("file_name", "N/A")
                 })
+
         except Exception as e:
             print(f"Skipping index {idx} due to error: {e}")
 
+    # 🔁 Sort all results globally by score descending
+    results.sort(key=lambda x: x['score'], reverse=True)
+
     return results, total_hits
 
-# Define fixed credentials for server-side validation
+
+# Dummy login credentials
 FIXED_USERNAME = 'user'
 FIXED_PASSWORD = 'password123'
 
+
 @app.route('/', methods=['GET', 'POST'])
 def index():
-    """
-    Handles the login page display and form submission.
-    - On GET, it displays the login form.
-    - On POST, it validates the credentials. If valid, redirects to home.
-      Otherwise, it re-renders the login page with an error message.
-    """
     message = ""
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
-
         if username == FIXED_USERNAME and password == FIXED_PASSWORD:
-            # Credentials are valid, redirect to the home page
             return redirect(url_for('home'))
         else:
-            # Credentials are invalid, show an error message
             message = "❌ Invalid username or password."
-    
-    # Render the login template, passing any message
     return render_template('login.html', message=message)
+
 
 @app.route('/home', methods=['GET', 'POST'])
 def home():
-    """
-    Handles the home page (after successful login).
-    It also includes the logic for file upload and search as per your original snippet.
-    """
     search_result = []
     upload_result = {}
     total_hits = 0
-    message = "" # This message is for upload/search, not login error
+    message = ""
 
     if request.method == 'POST':
         if 'doc_id' in request.form and 'pdf_file' in request.files:
@@ -186,8 +182,9 @@ def home():
             doc_id = request.form['doc_id'].strip()
             if file.filename.endswith('.pdf') and doc_id:
                 file_path = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
+                file.save(file_path)
                 text = extract_text_from_pdf(file_path)
-                save_to_elasticsearch(doc_id, doc_id, text)
+                save_to_elasticsearch(doc_id, doc_id, text, file.filename)
                 message = f"✅ File uploaded and processed successfully with ID: {doc_id}"
                 upload_result = {
                     "id": doc_id,
@@ -195,13 +192,10 @@ def home():
                 }
             else:
                 message = "❌ Invalid file or missing Document ID."
-
         elif 'search' in request.form:
             search_query = request.form['search']
             search_result, total_hits = knn_search_all_indices(search_query)
 
-    # The user's original code snippet renders 'index.html' for the home route.
-    # This means 'index.html' will be the content shown after successful login.
     return render_template(
         'index.html',
         search_result=search_result,
@@ -209,6 +203,7 @@ def home():
         total_hits=total_hits,
         message=message
     )
+
 
 if __name__ == '__main__':
     app.run(debug=True)

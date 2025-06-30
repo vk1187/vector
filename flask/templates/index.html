@@ -77,11 +77,13 @@
 <body>
     <h2>📄 PDF Upload & Vector Search</h2>
 
-    <form method="POST" enctype="multipart/form-data">
+    <form method="POST" enctype="multipart/form-data" action="/home">
         <label><strong>Document ID:</strong></label><br>
-        <input type="text" name="doc_id" placeholder="e.g., invoice1" required><br>
+        <input type="text" name="doc_id" placeholder="e.g., invoice1" required><br><br>
+
         <label><strong>Upload PDF File:</strong></label><br>
-        <input type="file" name="pdf_file" accept="application/pdf" required><br>
+        <input type="file" name="pdf_file" accept="application/pdf" required><br><br>
+
         <button type="submit">📤 Upload & Embed</button>
     </form>
 
@@ -108,13 +110,55 @@
             <ul>
                 {% for item in search_result %}
                     <li>
+                        <strong>File Name:</strong> {{ item.file_name }}<br>
                         <strong>Index:</strong> {{ item.index }}<br>
                         <strong>Score:</strong> {{ "%.4f"|format(item.score) }}<br>
-                        {{ item.text[:300] }}...
+                        <strong>Context:</strong> {{ item.text | safe }}...
+
                     </li>
                 {% endfor %}
             </ul>
         </div>
     {% endif %}
+
+    <!-- Uploading Progress Bar -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const uploadForm = document.querySelector('form[enctype="multipart/form-data"]');
+
+            uploadForm.addEventListener('submit', () => {
+                const submitBtn = uploadForm.querySelector('button[type="submit"]');
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Uploading...';
+
+                const progressWrapper = document.createElement('div');
+                progressWrapper.style.marginTop = '10px';
+                progressWrapper.style.width = '100%';
+                progressWrapper.style.backgroundColor = '#e0e0e0';
+                progressWrapper.style.borderRadius = '5px';
+                progressWrapper.style.overflow = 'hidden';
+                progressWrapper.style.height = '20px';
+
+                const progressBar = document.createElement('div');
+                progressBar.style.height = '100%';
+                progressBar.style.width = '0%';
+                progressBar.style.backgroundColor = '#2ecc71';
+                progressBar.style.transition = 'width 0.4s ease';
+
+                progressWrapper.appendChild(progressBar);
+                uploadForm.parentNode.insertBefore(progressWrapper, uploadForm.nextSibling);
+
+                let width = 0;
+                const interval = setInterval(() => {
+                    if (width >= 95) {
+                        clearInterval(interval);
+                        return;
+                    }
+                    width += 1;
+                    progressBar.style.width = width + '%';
+                }, 50);
+            });
+        });
+    </script>
 </body>
 </html>
